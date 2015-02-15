@@ -9,6 +9,7 @@
 /* Define prototypes of our functions in this module */
 static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
+static void decodeUrlSafeString(char string[]);
 
 /* Define our module as an entity and assign a function for registering hooks  */
 
@@ -28,6 +29,8 @@ struct Policy
     char b64str[1024];
     char url[1024];
     char client_ip[15];
+    char dateLessThan[1024];
+    char dateGreaterThan[1024];
     char signiture[1024]; 
 };
 
@@ -79,10 +82,31 @@ static int privcon_handler(request_rec *r)
     ap_rputs("\n", r);
     ap_rputs(policy.b64str, r);
     
+    
+
+    ap_rputs("\n", r);
+    decodeUrlSafeString(policy.b64str);
+    ap_rputs("\n", r);
+    ap_rputs(policy.b64str, r);
+
     char decoded[1024];
     apr_base64_decode(decoded, policy.b64str);
     ap_rputs("\n", r);
     ap_rputs(decoded, r);
 
     return OK;
+}
+
+
+static void decodeUrlSafeString(char string[]) {
+    const char safe[] = {'-', '_', '~'};
+    const char unsafe[] = {'+', '=', '/'}; 
+
+    for (int x = 0; x < strlen(string); x++) {
+        for (int y = 0; y < sizeof(safe); y++) {
+            if (string[x] == safe[y]) {
+                string[x]=unsafe[y];
+            }
+        }
+    }
 }
