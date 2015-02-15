@@ -3,8 +3,8 @@
 #include <http_core.h>
 #include <http_protocol.h>
 #include <http_request.h>
-#include <string.h>
 #include "apr_base64.h"
+#include "apr_strings.h"
 
 /* Define prototypes of our functions in this module */
 static void register_hooks(apr_pool_t *pool);
@@ -23,6 +23,13 @@ module AP_MODULE_DECLARE_DATA   mod_auth_privcon_module =
     register_hooks   // Our hook registering function
 };
 
+struct Policy
+{
+    char b64str[1024];
+    char url[1024];
+    char client_ip[15];
+    char signiture[1024]; 
+};
 
 /* register_hooks: Adds a hook to the httpd process */
 static void register_hooks(apr_pool_t *pool) 
@@ -47,10 +54,34 @@ static int privcon_handler(request_rec *r)
     // The first thing we will do is write a simple "Hello, world!" back to the client.
     ap_rputs("Hello, world!<br/>", r);
     ap_rputs(r->useragent_ip, r);
+    ap_rputs("\n", r);
 
+    struct Policy policy;
+
+    // Get the querystring parameters and populate the policy object
+    char *a, *next, *last, *pnext, *plast;
+    next = apr_strtok(r->args, "&", &last);
+
+    while (next) {
+        pnext = apr_strtok(next, "=", &plast);
+
+        if (strcmp(pnext, "policy")==0) {
+            pnext = apr_strtok(NULL, "=", &plast);
+            strcpy(policy.b64str, pnext);
+        } else if (strcmp(pnext, "signiture")==0) {
+            pnext = apr_strtok(NULL, "=", &plast);
+            strcpy(policy.signiture, pnext);
+        }
+
+        next = apr_strtok(NULL, "&", &last);
+    }
+
+    ap_rputs("\n", r);
+    ap_rputs(policy.b64str, r);
+    
     char decoded[1024];
-    apr_base64_decode(decoded, r->args);
-
+    apr_base64_decode(decoded, policy.b64str);
+    ap_rputs("\n", r);
     ap_rputs(decoded, r);
 
     return OK;
