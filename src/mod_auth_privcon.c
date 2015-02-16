@@ -12,8 +12,8 @@ struct Policy
 {
     char url[1024];
     char client_ip[15];
-    char dateLessThan[1024];
-    char dateGreaterThan[1024];
+    char dateLessThan[20];
+    char dateGreaterThan[20];
 };
 
 struct QueryStringParameters
@@ -22,13 +22,19 @@ struct QueryStringParameters
     char signiture[1024];
 };
 
+enum JsonDataType {
+    JSONSTRING,
+    JSONEPOCHDATETIME,
+    JSONINTEGER
+};
+
 /* Define prototypes of our functions in this module */
 static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
 static void decodeUrlSafeString(char string[]);
 static struct QueryStringParameters extractQueryStringParameters(char querystring[]);
 static void populatePolicyParameters(char policyJson[], struct Policy *policy);
-static void getJsonPropertyValue(char src[], char propertyName[], char propertyValue[], request_rec *r);
+static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type);
 static int strSearchPosition(char src[], char str[], int start);
 
 /* Define our module as an entity and assign a function for registering hooks  */
@@ -87,8 +93,13 @@ static int privcon_handler(request_rec *r)
     // Populate policy from policy json
     populatePolicyParameters(policyJson, &policy);
 
-    getJsonPropertyValue(policyJson, "Resource", policy.url, r);
+    extractJsonPropertyValue(policyJson, "Resource", policy.url, JSONSTRING);
     ap_rputs(policy.url, r);
+
+    extractJsonPropertyValue(policyJson, "DateLessThan", policy.dateLessThan, JSONEPOCHDATETIME);
+    ap_rputs(policy.dateLessThan, r);
+
+
 
     int urlposition;
     urlposition = strSearchPosition(policyJson, "Resource\":\"", 0);
@@ -165,20 +176,40 @@ static void decodeUrlSafeString(char string[]) {
     }
 }
 
-static void getJsonPropertyValue(char src[], char propertyName[], char propertyValue[], request_rec *r) {
-    char propertyNamePattern[(strlen(propertyName)+4)];
-    sprintf(propertyNamePattern, "\"%s\":\"", propertyName);
-    int propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
-    
+static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type) {
+    // Create the pattern to match in the format of "propertyname":"
+    char *propertyNamePattern;
+    int propertyNamePosition;
+    char *propertyEndPattern;
+
+    switch (type) {
+        case JSONSTRING:
+            propertyNamePattern = malloc(strlen(propertyName) + 4);
+            sprintf(propertyNamePattern, "\"%s\":\"", propertyName);
+            propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            propertyEndPattern = "\"";
+        break;
+        case JSONEPOCHDATETIME:
+            propertyNamePattern = malloc(strlen(propertyName) + 23);
+            sprintf(propertyNamePattern, "\"%s\":{\"Apache:EpochTime\":", propertyName);
+            propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            propertyEndPattern = "}";
+        break;
+        case JSONINTEGER:
+
+        break;
+    }
+   
+    // Get the value start position , end position , and length
     int valueStartPosition = propertyNamePosition + strlen(propertyNamePattern);
-
-    int valueEndPosition = strSearchPosition(src, "\"", valueStartPosition);
-
+    int valueEndPosition = strSearchPosition(src, propertyEndPattern, valueStartPosition);
     int valueLength = valueEndPosition - valueStartPosition;
 
+    // Copy the property value
     memcpy(propertyValue, &src[valueStartPosition], valueLength);
 
-    propertyValue[valueLength] = '\0'; // Add trailing null after the last chatacter
+    // Add trailing null after the last chatacter
+    propertyValue[valueLength] = '\0'; 
 }
 
 static int strSearchPosition(char src[], char str[], int start) {

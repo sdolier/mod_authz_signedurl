@@ -1,12 +1,14 @@
 <?php
 
+date_default_timezone_set('UTC');
+
 $policyJson = "{"
    ."\"Statement\": [{"
       ."\"Resource\":\"http://localhost:8099/private/success.jpg\","
       ."\"Condition\":{"
-         ."\"DateLessThan\":{\"Apache:EpochTime\":required ending date and time in Unix time format and UTC},"
+         ."\"DateLessThan\":{\"Apache:EpochTime\":" . (time()+(10*60)) . "},"
          ."\"DateGreaterThan\":{\"Apache:EpochTime\":optional beginning date and time in Unix time format and UTC},"
-         ."\"IpAddress\":{\"Apache:SourceIp\":\"optional IP address\"}"
+         ."\"IpAddress\":{\"Apache:SourceIp\":\"127.0.0.1\"}"
       ."}"
    ."}]"
 ."}";
