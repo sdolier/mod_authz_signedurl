@@ -88,7 +88,7 @@ static int privcon_handler(request_rec *r)
     populatePolicyParameters(policyJson, &policy);
 
     getJsonPropertyValue(policyJson, "Resource", policy.url, r);
-    //ap_rputs(resourceValue, r);
+    ap_rputs(policy.url, r);
 
     int urlposition;
     urlposition = strSearchPosition(policyJson, "Resource\":\"", 0);
@@ -177,6 +177,8 @@ static void getJsonPropertyValue(char src[], char propertyName[], char propertyV
     int valueLength = valueEndPosition - valueStartPosition;
 
     memcpy(propertyValue, &src[valueStartPosition], valueLength);
+
+    propertyValue[valueLength] = '\0'; // Add trailing null after the last chatacter
 }
 
 static int strSearchPosition(char src[], char str[], int start) {
