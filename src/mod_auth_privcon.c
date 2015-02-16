@@ -3,14 +3,32 @@
 #include <http_core.h>
 #include <http_protocol.h>
 #include <http_request.h>
+#include <string.h>
 #include "apr_base64.h"
 #include "apr_strings.h"
+
+
+struct Policy
+{
+    char url[1024];
+    char client_ip[15];
+    char dateLessThan[1024];
+    char dateGreaterThan[1024];
+};
+
+struct QueryStringParameters
+{
+    char policy[1024];
+    char signiture[1024];
+};
 
 /* Define prototypes of our functions in this module */
 static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
 static void decodeUrlSafeString(char string[]);
 static struct QueryStringParameters extractQueryStringParameters(char querystring[]);
+static void populatePolicyParameters(char policyJson[], struct Policy *policy);
+static int strsearch(char src[], char str[], int start);
 
 /* Define our module as an entity and assign a function for registering hooks  */
 
@@ -25,21 +43,7 @@ module AP_MODULE_DECLARE_DATA   mod_auth_privcon_module =
     register_hooks   // Our hook registering function
 };
 
-struct Policy
-{
-    char b64str[1024];
-    char url[1024];
-    char client_ip[15];
-    char dateLessThan[1024];
-    char dateGreaterThan[1024];
-    char signiture[1024]; 
-};
 
-struct QueryStringParameters
-{
-    char policy[1024];
-    char signiture[1024];
-};
 
 /* register_hooks: Adds a hook to the httpd process */
 static void register_hooks(apr_pool_t *pool) 
@@ -73,15 +77,38 @@ static int privcon_handler(request_rec *r)
     // Check required querystring orameters are present
     if (params.policy[0]=='\0' || params.signiture[0]=='\0') {
         return HTTP_FORBIDDEN;
-    } 
+    }
+
+    // Extract policy json from base 64 encoded policy from querystring
+    char policyJson[1024];
+    apr_base64_decode(policyJson, params.policy);
+
+    // Populate policy from policy json
+    populatePolicyParameters(policyJson, &policy);
+
+    int urlposition;
+    urlposition = strsearch(policyJson, "Resource\":\"", 0);
+    char urlpositionchar[15];
+    sprintf(urlpositionchar, "%d", urlposition);
+    ap_rputs("\nResource position: ", r);
+    ap_rputs(urlpositionchar, r);
+
+    int url2position;
+    url2position = strsearch(policyJson, "\"", (urlposition + strlen("Resource\":\"")));
+    char url2positionchar[15];
+    sprintf(url2positionchar, "%d", url2position);
+    ap_rputs("\nResource 2 position: ", r);
+    ap_rputs(url2positionchar, r);
 
     ap_rputs("\n", r);
     ap_rputs(params.policy, r);
     
-    char decoded[1024];
-    apr_base64_decode(decoded, params.policy);
+    
     ap_rputs("\n", r);
-    ap_rputs(decoded, r);
+    ap_rputs(policyJson, r);
+
+    ap_rputs("\n", r);
+    ap_rputs(policy.url, r);
 
     return OK;
 }
@@ -116,6 +143,11 @@ static struct QueryStringParameters extractQueryStringParameters(char querystrin
     return params;
 }
 
+static void populatePolicyParameters(char policyJson[], struct Policy *policy) {
+    strcpy(policy->url, "http://www.google.com");
+
+}
+
 static void decodeUrlSafeString(char string[]) {
     const char safe[] = {'-', '_', '~'};
     const char unsafe[] = {'+', '=', '/'}; 
@@ -127,4 +159,35 @@ static void decodeUrlSafeString(char string[]) {
             }
         }
     }
+}
+
+static int strsearch(char src[], char str[], int start) {
+   int i, j, firstOcc;
+   i = start, j = 0;
+ 
+   while (src[i] != '\0') {
+ 
+      while (src[i] != str[0] && src[i] != '\0')
+         i++;
+ 
+      if (src[i] == '\0')
+         return (-1);
+ 
+      firstOcc = i;
+ 
+      while (src[i] == str[j] && src[i] != '\0' && str[j] != '\0') {
+         i++;
+         j++;
+      }
+ 
+      if (str[j] == '\0')
+         return (firstOcc);
+      if (src[i] == '\0')
+         return (-1);
+ 
+      i = firstOcc + 1;
+      j = 0;
+   }
+
+   return (-1);
 }
