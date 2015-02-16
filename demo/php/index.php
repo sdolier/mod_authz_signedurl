@@ -15,4 +15,6 @@ $policyJson = str_replace(' ', '', $policyJson);
 
 echo "test page<br><br>";
 
+echo '<a href="private/test.txt?policy=' . base64_encode($policyJson) . '&signiture=abc">Text file</a><br><br>';
+
 echo '<img src="private/success.jpg?policy=' . base64_encode($policyJson) . '&signiture=abc">';
