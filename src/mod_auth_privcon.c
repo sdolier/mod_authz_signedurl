@@ -28,7 +28,8 @@ static int privcon_handler(request_rec *r);
 static void decodeUrlSafeString(char string[]);
 static struct QueryStringParameters extractQueryStringParameters(char querystring[]);
 static void populatePolicyParameters(char policyJson[], struct Policy *policy);
-static int strsearch(char src[], char str[], int start);
+static void getJsonPropertyValue(char src[], char propertyName[], char propertyValue[], request_rec *r);
+static int strSearchPosition(char src[], char str[], int start);
 
 /* Define our module as an entity and assign a function for registering hooks  */
 
@@ -86,15 +87,18 @@ static int privcon_handler(request_rec *r)
     // Populate policy from policy json
     populatePolicyParameters(policyJson, &policy);
 
+    getJsonPropertyValue(policyJson, "Resource", policy.url, r);
+    //ap_rputs(resourceValue, r);
+
     int urlposition;
-    urlposition = strsearch(policyJson, "Resource\":\"", 0);
+    urlposition = strSearchPosition(policyJson, "Resource\":\"", 0);
     char urlpositionchar[15];
     sprintf(urlpositionchar, "%d", urlposition);
     ap_rputs("\nResource position: ", r);
     ap_rputs(urlpositionchar, r);
 
     int url2position;
-    url2position = strsearch(policyJson, "\"", (urlposition + strlen("Resource\":\"")));
+    url2position = strSearchPosition(policyJson, "\"", (urlposition + strlen("Resource\":\"")));
     char url2positionchar[15];
     sprintf(url2positionchar, "%d", url2position);
     ap_rputs("\nResource 2 position: ", r);
@@ -161,7 +165,21 @@ static void decodeUrlSafeString(char string[]) {
     }
 }
 
-static int strsearch(char src[], char str[], int start) {
+static void getJsonPropertyValue(char src[], char propertyName[], char propertyValue[], request_rec *r) {
+    char propertyNamePattern[(strlen(propertyName)+4)];
+    sprintf(propertyNamePattern, "\"%s\":\"", propertyName);
+    int propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+    
+    int valueStartPosition = propertyNamePosition + strlen(propertyNamePattern);
+
+    int valueEndPosition = strSearchPosition(src, "\"", valueStartPosition);
+
+    int valueLength = valueEndPosition - valueStartPosition;
+
+    memcpy(propertyValue, &src[valueStartPosition], valueLength);
+}
+
+static int strSearchPosition(char src[], char str[], int start) {
    int i, j, firstOcc;
    i = start, j = 0;
  
