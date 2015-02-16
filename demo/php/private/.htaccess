@@ -1,0 +1,4 @@
+<IfModule mod_auth_privcon_module>
+    AddHandler privcon-handler .jpg
+    AddHandler privcon-handler .txt
+</IfModule>

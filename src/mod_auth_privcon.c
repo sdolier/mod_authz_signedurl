@@ -10,6 +10,7 @@
 static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
 static void decodeUrlSafeString(char string[]);
+static struct QueryStringParameters extractQueryStringParameters(char querystring[]);
 
 /* Define our module as an entity and assign a function for registering hooks  */
 
@@ -32,6 +33,12 @@ struct Policy
     char dateLessThan[1024];
     char dateGreaterThan[1024];
     char signiture[1024]; 
+};
+
+struct QueryStringParameters
+{
+    char policy[1024];
+    char signiture[1024];
 };
 
 /* register_hooks: Adds a hook to the httpd process */
@@ -61,42 +68,53 @@ static int privcon_handler(request_rec *r)
 
     struct Policy policy;
 
-    // Get the querystring parameters and populate the policy object
-    char *a, *next, *last, *pnext, *plast;
-    next = apr_strtok(r->args, "&", &last);
+    struct QueryStringParameters params = extractQueryStringParameters(r->args);
 
-    while (next) {
-        pnext = apr_strtok(next, "=", &plast);
-
-        if (strcmp(pnext, "policy")==0) {
-            pnext = apr_strtok(NULL, "=", &plast);
-            strcpy(policy.b64str, pnext);
-        } else if (strcmp(pnext, "signiture")==0) {
-            pnext = apr_strtok(NULL, "=", &plast);
-            strcpy(policy.signiture, pnext);
-        }
-
-        next = apr_strtok(NULL, "&", &last);
-    }
+    // Check required querystring orameters are present
+    if (params.policy[0]=='\0' || params.signiture[0]=='\0') {
+        return HTTP_FORBIDDEN;
+    } 
 
     ap_rputs("\n", r);
-    ap_rputs(policy.b64str, r);
+    ap_rputs(params.policy, r);
     
-    
-
-    ap_rputs("\n", r);
-    decodeUrlSafeString(policy.b64str);
-    ap_rputs("\n", r);
-    ap_rputs(policy.b64str, r);
-
     char decoded[1024];
-    apr_base64_decode(decoded, policy.b64str);
+    apr_base64_decode(decoded, params.policy);
     ap_rputs("\n", r);
     ap_rputs(decoded, r);
 
     return OK;
 }
 
+static struct QueryStringParameters extractQueryStringParameters(char querystring[]) {
+    struct QueryStringParameters params;
+    params.policy[0] = '\0';
+    params.signiture[0] = '\0';
+
+    char *a, *next, *last, *pnext, *plast;
+    next = apr_strtok(querystring, "&", &last);
+
+    while (next) {
+        pnext = apr_strtok(next, "=", &plast);
+
+        if (strcmp(pnext, "policy")==0) {
+            if (strlen(plast) > 0) { // Check a parameter value was provided in the url
+                pnext = apr_strtok(NULL, "=", &plast);
+                strcpy(params.policy, pnext);
+            }
+            
+        } else if (strcmp(pnext, "signiture")==0) {
+            if (strlen(plast) > 0) { // Check a parameter value was provided in the url
+                pnext = apr_strtok(NULL, "=", &plast);
+                strcpy(params.signiture, pnext);
+            }
+        }
+
+        next = apr_strtok(NULL, "&", &last);
+    }
+
+    return params;
+}
 
 static void decodeUrlSafeString(char string[]) {
     const char safe[] = {'-', '_', '~'};

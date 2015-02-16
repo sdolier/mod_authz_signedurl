@@ -30,3 +30,7 @@
 
 *.slo
 *.libs*
+*.loT
+
+# IDE
+.idea
