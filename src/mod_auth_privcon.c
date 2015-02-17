@@ -20,7 +20,7 @@ struct Policy
 struct QueryStringParameters
 {
     char policy[1024];
-    char signiture[1024];
+    char signature[1024];
 };
 
 enum JsonDataType {
@@ -79,7 +79,7 @@ static int privcon_handler(request_rec *r)
     struct QueryStringParameters params = extractQueryStringParameters(r->args);
 
     // Check required querystring orameters are present
-    if (params.policy[0]=='\0' || params.signiture[0]=='\0') {
+    if (params.policy[0]=='\0' || params.signature[0]=='\0') {
         return HTTP_FORBIDDEN;
     }
 
@@ -88,6 +88,7 @@ static int privcon_handler(request_rec *r)
     apr_base64_decode(policyJson, params.policy);
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Json %s.", policyJson);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature %s.", params.signature);
 
     // Populate policy from policy json
     populatePolicyParameters(policyJson, &policy);
@@ -111,7 +112,7 @@ static int privcon_handler(request_rec *r)
 static struct QueryStringParameters extractQueryStringParameters(char querystring[]) {
     struct QueryStringParameters params;
     params.policy[0] = '\0';
-    params.signiture[0] = '\0';
+    params.signature[0] = '\0';
 
     char *a, *next, *last, *pnext, *plast;
     next = apr_strtok(querystring, "&", &last);
@@ -125,10 +126,10 @@ static struct QueryStringParameters extractQueryStringParameters(char querystrin
                 strcpy(params.policy, pnext);
             }
             
-        } else if (strcmp(pnext, "signiture")==0) {
+        } else if (strcmp(pnext, "signature")==0) {
             if (strlen(plast) > 0) { // Check a parameter value was provided in the url
                 pnext = apr_strtok(NULL, "=", &plast);
-                strcpy(params.signiture, pnext);
+                strcpy(params.signature, pnext);
             }
         }
 
