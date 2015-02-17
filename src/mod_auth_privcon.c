@@ -9,6 +9,7 @@
 #include <openssl/sha.h>
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
+#include <openssl/err.h>
 #include "apr_base64.h"
 #include "apr_strings.h"
 
@@ -96,7 +97,7 @@ static int privcon_handler(request_rec *r)
     apr_base64_decode(policySignature, params.signature);
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Json %s.", policyJson);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature (base64) %s.", params.policy);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature (base64) %s.", params.signature);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature %s.", policySignature);
 
     // Verify the signature
@@ -247,6 +248,8 @@ static int strSearchPosition(char src[], char str[], int start) {
 static int VerifySignature(char data[], char signature[], request_rec *r) {
     
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting VerifySignature");
+
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Signature: %d", strlen(signature));
     
     size_t dataLength = strlen(data);
     size_t signatureLength = strlen(signature);
@@ -287,7 +290,10 @@ static int VerifySignature(char data[], char signature[], request_rec *r) {
 
     rc = RSA_verify(NID_sha256, data, sizeof(data), signature, signatureLength, &rsa_pubkey);
     if (1 != rc) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "RSA_verify error");
+        unsigned long rsa_error = ERR_get_error();
+        char rsa_error_str[1024];
+        ERR_error_string(rsa_error, rsa_error_str);
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "RSA_verify error %d %s", rsa_error, rsa_error_str);
         return 0;
     }
 
