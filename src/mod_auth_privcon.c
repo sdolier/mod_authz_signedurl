@@ -5,6 +5,10 @@
 #include <http_request.h>
 #include <http_log.h>
 #include <string.h>
+#include <stdio.h>
+#include <openssl/sha.h>
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
 #include "apr_base64.h"
 #include "apr_strings.h"
 
@@ -38,6 +42,7 @@ static struct QueryStringParameters extractQueryStringParameters(char querystrin
 static void populatePolicyParameters(char policyJson[], struct Policy *policy);
 static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type);
 static int strSearchPosition(char src[], char str[], int start);
+static int VerifySignature(char data[], char signature[], request_rec *r);
 
 /* Define our module as an entity and assign a function for registering hooks  */
 
@@ -87,8 +92,15 @@ static int privcon_handler(request_rec *r)
     char policyJson[1024];
     apr_base64_decode(policyJson, params.policy);
 
+    char policySignature[1024];
+    apr_base64_decode(policySignature, params.signature);
+
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Json %s.", policyJson);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature %s.", params.signature);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature (base64) %s.", params.policy);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature %s.", policySignature);
+
+    // Verify the signature
+    int signatureOk = VerifySignature(policyJson, policySignature, r);
 
     // Populate policy from policy json
     populatePolicyParameters(policyJson, &policy);
@@ -124,12 +136,14 @@ static struct QueryStringParameters extractQueryStringParameters(char querystrin
             if (strlen(plast) > 0) { // Check a parameter value was provided in the url
                 pnext = apr_strtok(NULL, "=", &plast);
                 strcpy(params.policy, pnext);
+                decodeUrlSafeString(params.policy);
             }
             
         } else if (strcmp(pnext, "signature")==0) {
             if (strlen(plast) > 0) { // Check a parameter value was provided in the url
                 pnext = apr_strtok(NULL, "=", &plast);
                 strcpy(params.signature, pnext);
+                decodeUrlSafeString(params.signature);
             }
         }
 
@@ -228,4 +242,59 @@ static int strSearchPosition(char src[], char str[], int start) {
    }
 
    return (-1);
+}
+
+static int VerifySignature(char data[], char signature[], request_rec *r) {
+    
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting VerifySignature");
+    
+    size_t dataLength = strlen(data);
+    size_t signatureLength = strlen(signature);
+
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Reading public key");
+    FILE *keyfile = fopen("/Users/stephen.dolier/Sites/mod_auth_privcon/demo/samplekey.pub", "r");
+
+    RSA **x;
+    RSA rsa_pubkey = *PEM_read_RSA_PUBKEY(keyfile, NULL,
+                                        NULL, NULL);
+
+    // Hash the data
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting SHA256 hash");
+    SHA256_CTX sha_ctx = { 0 };
+    int rc;
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    rc = SHA256_Init(&sha_ctx);
+    if (1 != rc) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "SHA256_Init error");
+        return 0;
+    }
+
+    rc = SHA256_Update(&sha_ctx, data, dataLength);
+    if (1 != rc) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "SHA256_Update error");
+        return 0;
+    }
+
+    rc = SHA256_Final(digest, &sha_ctx);
+    if (1 != rc) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "SHA256_Final error");
+        return 0;
+    }
+
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "SHA256 Digest %s", digest);
+
+    int result = 0;
+
+    rc = RSA_verify(NID_sha256, data, sizeof(data), signature, signatureLength, &rsa_pubkey);
+    if (1 != rc) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "RSA_verify error");
+        return 0;
+    }
+
+
+    /*
+    //result = RSA_verify(NID_sha1, const unsigned char *m, unsigned int m_len,
+    //unsigned char *sigbuf, unsigned int siglen, RSA *rsa);
+*/
+    return 1;
 }

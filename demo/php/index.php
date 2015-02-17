@@ -33,7 +33,7 @@ function rsa_sha1_sign($policy, $private_key_filename) {
    $pkeyid = openssl_get_privatekey($priv_key);
 
    // compute signature
-   openssl_sign($policy, $signature, $pkeyid);
+   openssl_sign($policy, $signature, $pkeyid, OPENSSL_ALGO_SHA256);
 
    // free the key from memory
    openssl_free_key($pkeyid);
