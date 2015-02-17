@@ -11,7 +11,7 @@
 struct Policy
 {
     char url[1024];
-    char client_ip[15];
+    char sourceIp[15];
     char dateLessThan[20];
     char dateGreaterThan[20];
 };
@@ -25,7 +25,8 @@ struct QueryStringParameters
 enum JsonDataType {
     JSONSTRING,
     JSONEPOCHDATETIME,
-    JSONINTEGER
+    JSONINTEGER,
+    JSONIPADDRESS
 };
 
 /* Define prototypes of our functions in this module */
@@ -94,29 +95,21 @@ static int privcon_handler(request_rec *r)
     populatePolicyParameters(policyJson, &policy);
 
     extractJsonPropertyValue(policyJson, "Resource", policy.url, JSONSTRING);
+    ap_rputs("\n", r);
     ap_rputs(policy.url, r);
 
     extractJsonPropertyValue(policyJson, "DateLessThan", policy.dateLessThan, JSONEPOCHDATETIME);
+    ap_rputs("\n", r);
     ap_rputs(policy.dateLessThan, r);
 
-
-
-    int urlposition;
-    urlposition = strSearchPosition(policyJson, "Resource\":\"", 0);
-    char urlpositionchar[15];
-    sprintf(urlpositionchar, "%d", urlposition);
-    ap_rputs("\nResource position: ", r);
-    ap_rputs(urlpositionchar, r);
-
-    int url2position;
-    url2position = strSearchPosition(policyJson, "\"", (urlposition + strlen("Resource\":\"")));
-    char url2positionchar[15];
-    sprintf(url2positionchar, "%d", url2position);
-    ap_rputs("\nResource 2 position: ", r);
-    ap_rputs(url2positionchar, r);
-
+    extractJsonPropertyValue(policyJson, "DateGreaterThan", policy.dateGreaterThan, JSONEPOCHDATETIME);
     ap_rputs("\n", r);
-    ap_rputs(params.policy, r);
+    ap_rputs(policy.dateGreaterThan, r);
+
+    extractJsonPropertyValue(policyJson, "IpAddress", policy.sourceIp, JSONIPADDRESS);
+    ap_rputs("\n", r);
+    ap_rputs(policy.sourceIp, r);
+
     
     
     ap_rputs("\n", r);
@@ -194,6 +187,12 @@ static void extractJsonPropertyValue(char src[], char propertyName[], char prope
             sprintf(propertyNamePattern, "\"%s\":{\"Apache:EpochTime\":", propertyName);
             propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
             propertyEndPattern = "}";
+        break;
+        case JSONIPADDRESS:
+            propertyNamePattern = malloc(strlen(propertyName) + 23);
+            sprintf(propertyNamePattern, "\"%s\":{\"Apache:SourceIp\":\"", propertyName);
+            propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            propertyEndPattern = "\"";
         break;
         case JSONINTEGER:
 
