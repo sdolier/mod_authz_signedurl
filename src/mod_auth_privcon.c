@@ -3,6 +3,7 @@
 #include <http_core.h>
 #include <http_protocol.h>
 #include <http_request.h>
+#include <http_log.h>
 #include <string.h>
 #include "apr_base64.h"
 #include "apr_strings.h"
@@ -72,11 +73,6 @@ static int privcon_handler(request_rec *r)
      * and Apache will try somewhere else.
      */
     if (!r->handler || strcmp(r->handler, "privcon-handler")) return (DECLINED);
-    
-    // The first thing we will do is write a simple "Hello, world!" back to the client.
-    ap_rputs("Hello, world!<br/>", r);
-    ap_rputs(r->useragent_ip, r);
-    ap_rputs("\n", r);
 
     struct Policy policy;
 
@@ -91,34 +87,25 @@ static int privcon_handler(request_rec *r)
     char policyJson[1024];
     apr_base64_decode(policyJson, params.policy);
 
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Json %s.", policyJson);
+
     // Populate policy from policy json
     populatePolicyParameters(policyJson, &policy);
 
     extractJsonPropertyValue(policyJson, "Resource", policy.url, JSONSTRING);
-    ap_rputs("\n", r);
-    ap_rputs(policy.url, r);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy url %s.", policy.url);
 
     extractJsonPropertyValue(policyJson, "DateLessThan", policy.dateLessThan, JSONEPOCHDATETIME);
-    ap_rputs("\n", r);
-    ap_rputs(policy.dateLessThan, r);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy DateLessThan %s.", policy.dateLessThan);
 
     extractJsonPropertyValue(policyJson, "DateGreaterThan", policy.dateGreaterThan, JSONEPOCHDATETIME);
-    ap_rputs("\n", r);
-    ap_rputs(policy.dateGreaterThan, r);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy DateGreaterThan %s.", policy.dateGreaterThan);
 
     extractJsonPropertyValue(policyJson, "IpAddress", policy.sourceIp, JSONIPADDRESS);
-    ap_rputs("\n", r);
-    ap_rputs(policy.sourceIp, r);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Source IP %s.", policy.sourceIp);
 
-    
-    
-    ap_rputs("\n", r);
-    ap_rputs(policyJson, r);
-
-    ap_rputs("\n", r);
-    ap_rputs(policy.url, r);
-
-    return OK;
+    // Let apache continue to process the request
+    return DECLINED;
 }
 
 static struct QueryStringParameters extractQueryStringParameters(char querystring[]) {
