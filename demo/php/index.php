@@ -15,7 +15,7 @@ $policyJson = "{"
 
 $policyJson = str_replace(' ', '', $policyJson);
 $base64PolicyJson = url_safe_base64_encode($policyJson);
-$base64Signature = url_safe_base64_encode(rsa_sha1_sign($base64PolicyJson, "../samplekey.pem"));
+$base64Signature = url_safe_base64_encode(rsa_sha1_sign($policyJson, "../samplekey.pem"));
 
 echo "test page<br><br>";
 

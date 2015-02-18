@@ -13,6 +13,13 @@
 #include "apr_base64.h"
 #include "apr_strings.h"
 
+struct Configuration
+{
+    const char *publicKey;
+    const char *publicKeyPath;
+};
+
+static struct Configuration configuration;
 
 struct Policy
 {
@@ -24,8 +31,8 @@ struct Policy
 
 struct QueryStringParameters
 {
-    char policy[1024];
-    char signature[1024];
+    char base64Policy[1024];
+    char base64Signature[1024];
 };
 
 enum JsonDataType {
@@ -43,22 +50,39 @@ static struct QueryStringParameters extractQueryStringParameters(char querystrin
 static void populatePolicyParameters(char policyJson[], struct Policy *policy);
 static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type);
 static int strSearchPosition(char src[], char str[], int start);
-static int VerifySignature(char data[], char signature[], request_rec *r);
+static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r);
+
+
+const char *privcon_set_publickey(cmd_parms *cmd, void *cfg, const char *arg)
+{
+    configuration.publicKey = arg;
+    return NULL;
+}
+
+const char *privcon_set_publickeypath(cmd_parms *cmd, void *cfg, const char *arg)
+{
+    configuration.publicKeyPath = arg;
+    return NULL;
+}
+
+static const command_rec privcon_directives[] =
+{
+    AP_INIT_TAKE1("privConPublicKey", privcon_set_publickey, NULL, OR_ALL, "Set the public key"),
+    AP_INIT_TAKE1("privConPublicKeyPath", privcon_set_publickeypath, NULL, OR_ALL, "Set the path to a public key"),
+    { NULL }
+};
 
 /* Define our module as an entity and assign a function for registering hooks  */
-
 module AP_MODULE_DECLARE_DATA   mod_auth_privcon_module =
 {
     STANDARD20_MODULE_STUFF,
-    NULL,            // Per-directory configuration handler
-    NULL,            // Merge handler for per-directory configurations
-    NULL,            // Per-server configuration handler
-    NULL,            // Merge handler for per-server configurations
-    NULL,            // Any directives we may have for httpd
-    register_hooks   // Our hook registering function
+    NULL,               // Per-directory configuration handler
+    NULL,               // Merge handler for per-directory configurations
+    NULL,               // Per-server configuration handler
+    NULL,               // Merge handler for per-server configurations
+    privcon_directives, // Any directives we may have for httpd
+    register_hooks      // Our hook registering function
 };
-
-
 
 /* register_hooks: Adds a hook to the httpd process */
 static void register_hooks(apr_pool_t *pool) 
@@ -85,23 +109,25 @@ static int privcon_handler(request_rec *r)
     struct QueryStringParameters params = extractQueryStringParameters(r->args);
 
     // Check required querystring orameters are present
-    if (params.policy[0]=='\0' || params.signature[0]=='\0') {
+    if (params.base64Policy[0]=='\0' || params.base64Signature[0]=='\0') {
         return HTTP_FORBIDDEN;
     }
 
     // Extract policy json from base 64 encoded policy from querystring
-    char policyJson[1024];
-    apr_base64_decode(policyJson, params.policy);
+    char policyJson[apr_base64_decode_len(params.base64Policy)];
+    size_t policyJsonLength = apr_base64_decode(policyJson, params.base64Policy);
 
-    char policySignature[1024];
-    apr_base64_decode(policySignature, params.signature);
+    unsigned char policySignature[apr_base64_decode_len(params.base64Signature)];
+    size_t signatureLength = apr_base64_decode_binary(policySignature, params.base64Signature);
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Json %s.", policyJson);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature (base64) %s.", params.signature);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature %s.", policySignature);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature (base64) %s.", params.base64Signature);
 
     // Verify the signature
-    int signatureOk = VerifySignature(policyJson, policySignature, r);
+    int signatureOk = VerifySignature(policyJson, policyJsonLength, policySignature, signatureLength, r);
+    if (1 != signatureOk) {
+        return HTTP_FORBIDDEN;
+    }
 
     // Populate policy from policy json
     populatePolicyParameters(policyJson, &policy);
@@ -124,8 +150,8 @@ static int privcon_handler(request_rec *r)
 
 static struct QueryStringParameters extractQueryStringParameters(char querystring[]) {
     struct QueryStringParameters params;
-    params.policy[0] = '\0';
-    params.signature[0] = '\0';
+    params.base64Policy[0] = '\0';
+    params.base64Signature[0] = '\0';
 
     char *a, *next, *last, *pnext, *plast;
     next = apr_strtok(querystring, "&", &last);
@@ -136,15 +162,15 @@ static struct QueryStringParameters extractQueryStringParameters(char querystrin
         if (strcmp(pnext, "policy")==0) {
             if (strlen(plast) > 0) { // Check a parameter value was provided in the url
                 pnext = apr_strtok(NULL, "=", &plast);
-                strcpy(params.policy, pnext);
-                decodeUrlSafeString(params.policy);
+                strcpy(params.base64Policy, pnext);
+                decodeUrlSafeString(params.base64Policy);
             }
             
         } else if (strcmp(pnext, "signature")==0) {
             if (strlen(plast) > 0) { // Check a parameter value was provided in the url
                 pnext = apr_strtok(NULL, "=", &plast);
-                strcpy(params.signature, pnext);
-                decodeUrlSafeString(params.signature);
+                strcpy(params.base64Signature, pnext);
+                decodeUrlSafeString(params.base64Signature);
             }
         }
 
@@ -245,23 +271,20 @@ static int strSearchPosition(char src[], char str[], int start) {
    return (-1);
 }
 
-static int VerifySignature(char data[], char signature[], request_rec *r) {
+static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r) {
     
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting VerifySignature");
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting signature verification");
 
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Signature: %d", strlen(signature));
-    
-    size_t dataLength = strlen(data);
-    size_t signatureLength = strlen(signature);
+    //ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Reading public key from %s", configuration.publicKeyPath);
+    //FILE *keyfile = fopen(configuration.publicKeyPath, "r");
+    //RSA rsa_pubkey = *PEM_read_RSA_PUBKEY(keyfile, NULL, NULL, NULL);
 
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Reading public key");
-    FILE *keyfile = fopen("/Users/stephen.dolier/Sites/mod_auth_privcon/demo/samplekey.pub", "r");
+    char publicKey[apr_base64_decode_len(configuration.publicKey)];
+    size_t publicKeyLength = apr_base64_decode(publicKey, configuration.publicKey);
+    BIO* bio = BIO_new_mem_buf( publicKey, publicKeyLength);
+    RSA rsa_pubkey = *PEM_read_bio_RSA_PUBKEY(bio, NULL, NULL, NULL);
 
-    RSA **x;
-    RSA rsa_pubkey = *PEM_read_RSA_PUBKEY(keyfile, NULL,
-                                        NULL, NULL);
-
-    // Hash the data
+    // Create a digenst of the data
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting SHA256 hash");
     SHA256_CTX sha_ctx = { 0 };
     int rc;
@@ -288,19 +311,16 @@ static int VerifySignature(char data[], char signature[], request_rec *r) {
 
     int result = 0;
 
-    rc = RSA_verify(NID_sha256, data, sizeof(data), signature, signatureLength, &rsa_pubkey);
+    rc = RSA_verify(NID_sha256, digest, SHA256_DIGEST_LENGTH, signature, signatureLength, &rsa_pubkey);
     if (1 != rc) {
-        unsigned long rsa_error = ERR_get_error();
+        int rsa_error = ERR_get_error();
         char rsa_error_str[1024];
         ERR_error_string(rsa_error, rsa_error_str);
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "RSA_verify error %d %s", rsa_error, rsa_error_str);
         return 0;
     }
 
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "RSA_verify OK");
 
-    /*
-    //result = RSA_verify(NID_sha1, const unsigned char *m, unsigned int m_len,
-    //unsigned char *sigbuf, unsigned int siglen, RSA *rsa);
-*/
     return 1;
 }
