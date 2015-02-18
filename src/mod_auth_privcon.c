@@ -29,12 +29,6 @@ struct Policy
     char dateGreaterThan[20];
 };
 
-struct QueryStringParameters
-{
-    char base64Policy[1024];
-    char base64Signature[1024];
-};
-
 enum JsonDataType {
     JSONSTRING,
     JSONEPOCHDATETIME,
@@ -46,7 +40,6 @@ enum JsonDataType {
 static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
 static void decodeUrlSafeString(char string[]);
-static struct QueryStringParameters extractQueryStringParameters(char querystring[]);
 static void populatePolicyParameters(char policyJson[], struct Policy *policy);
 static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type);
 static int strSearchPosition(char src[], char str[], int start);
@@ -106,24 +99,28 @@ static int privcon_handler(request_rec *r)
 
     struct Policy policy;
 
-    struct QueryStringParameters params = extractQueryStringParameters(r->args);
+    // Get the querystring parameters
+    apr_table_t *GET;
+    ap_args_to_table(r, &GET);
+    const char *base64Policy = apr_table_get(GET, "policy");
+    const char *base64Signature = apr_table_get(GET, "signature");
 
     // Check required querystring orameters are present
-    if (params.base64Policy[0]=='\0' || params.base64Signature[0]=='\0') {
+    if (!base64Policy || !base64Signature) {
         return HTTP_FORBIDDEN;
     }
 
     // Extract policy json from base 64 encoded policy from querystring
-    char policyJson[apr_base64_decode_len(params.base64Policy)];
-    size_t policyJsonLength = apr_base64_decode(policyJson, params.base64Policy);
+    char policyJson[apr_base64_decode_len(base64Policy)];
+    size_t policyJsonLength = apr_base64_decode(policyJson, base64Policy);
 
-    unsigned char policySignature[apr_base64_decode_len(params.base64Signature)];
-    size_t signatureLength = apr_base64_decode_binary(policySignature, params.base64Signature);
+    unsigned char policySignature[apr_base64_decode_len(base64Signature)];
+    size_t signatureLength = apr_base64_decode_binary(policySignature, base64Signature);
 
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Json %s.", policyJson);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature (base64) %s.", params.base64Signature);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature (base64) %s.", base64Signature);
 
-    // Verify the signature
+    // Verify the signature matches the json data
     int signatureOk = VerifySignature(policyJson, policyJsonLength, policySignature, signatureLength, r);
     if (1 != signatureOk) {
         return HTTP_FORBIDDEN;
@@ -146,38 +143,6 @@ static int privcon_handler(request_rec *r)
 
     // Let apache continue to process the request
     return DECLINED;
-}
-
-static struct QueryStringParameters extractQueryStringParameters(char querystring[]) {
-    struct QueryStringParameters params;
-    params.base64Policy[0] = '\0';
-    params.base64Signature[0] = '\0';
-
-    char *a, *next, *last, *pnext, *plast;
-    next = apr_strtok(querystring, "&", &last);
-
-    while (next) {
-        pnext = apr_strtok(next, "=", &plast);
-
-        if (strcmp(pnext, "policy")==0) {
-            if (strlen(plast) > 0) { // Check a parameter value was provided in the url
-                pnext = apr_strtok(NULL, "=", &plast);
-                strcpy(params.base64Policy, pnext);
-                decodeUrlSafeString(params.base64Policy);
-            }
-            
-        } else if (strcmp(pnext, "signature")==0) {
-            if (strlen(plast) > 0) { // Check a parameter value was provided in the url
-                pnext = apr_strtok(NULL, "=", &plast);
-                strcpy(params.base64Signature, pnext);
-                decodeUrlSafeString(params.base64Signature);
-            }
-        }
-
-        next = apr_strtok(NULL, "&", &last);
-    }
-
-    return params;
 }
 
 static void populatePolicyParameters(char policyJson[], struct Policy *policy) {
