@@ -12,6 +12,8 @@
 #include <openssl/err.h>
 #include "apr_base64.h"
 #include "apr_strings.h"
+#include "apr_random.h"
+#include "apr_pools.h"
 
 struct Configuration
 {
@@ -39,7 +41,7 @@ enum JsonDataType {
 /* Define prototypes of our functions in this module */
 static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
-static void decodeUrlSafeString(char string[]);
+static char* decodeUrlSafeString(const char *string, request_rec *r);
 static void populatePolicyParameters(char policyJson[], struct Policy *policy);
 static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type);
 static int strSearchPosition(char src[], char str[], int start);
@@ -102,8 +104,8 @@ static int privcon_handler(request_rec *r)
     // Get the querystring parameters
     apr_table_t *GET;
     ap_args_to_table(r, &GET);
-    const char *base64Policy = apr_table_get(GET, "policy");
-    const char *base64Signature = apr_table_get(GET, "signature");
+    const char *base64Policy = decodeUrlSafeString(apr_table_get(GET, "policy"), r);
+    const char *base64Signature = decodeUrlSafeString(apr_table_get(GET, "signature"), r);
 
     // Check required querystring orameters are present
     if (!base64Policy || !base64Signature) {
@@ -116,9 +118,6 @@ static int privcon_handler(request_rec *r)
 
     unsigned char policySignature[apr_base64_decode_len(base64Signature)];
     size_t signatureLength = apr_base64_decode_binary(policySignature, base64Signature);
-
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Json %s.", policyJson);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Signature (base64) %s.", base64Signature);
 
     // Verify the signature matches the json data
     int signatureOk = VerifySignature(policyJson, policyJsonLength, policySignature, signatureLength, r);
@@ -150,17 +149,22 @@ static void populatePolicyParameters(char policyJson[], struct Policy *policy) {
 
 }
 
-static void decodeUrlSafeString(char string[]) {
+static char* decodeUrlSafeString(const char *string, request_rec *r) {
     const char safe[] = {'-', '_', '~'};
-    const char unsafe[] = {'+', '=', '/'}; 
+    const char unsafe[] = {'+', '=', '/'};
 
-    for (int x = 0; x < strlen(string); x++) {
+    char *decoded = malloc(strlen(string)+1);
+    apr_cpystrn(decoded, string, strlen(string)+1);
+ 
+    for (int x = 0; x < strlen(decoded); x++) {
         for (int y = 0; y < sizeof(safe); y++) {
-            if (string[x] == safe[y]) {
-                string[x]=unsafe[y];
+            if (decoded[x] == safe[y]) {
+                decoded[x] = unsafe[y];
             }
         }
     }
+ 
+    return decoded;
 }
 
 static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type) {
@@ -249,6 +253,12 @@ static int VerifySignature(char data[], size_t dataLength, unsigned char signatu
     BIO* bio = BIO_new_mem_buf( publicKey, publicKeyLength);
     RSA rsa_pubkey = *PEM_read_bio_RSA_PUBKEY(bio, NULL, NULL, NULL);
 
+
+    // Create a digent of the data
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting apr SHA256 hash");
+    apr_crypto_hash_t *t = apr_crypto_sha256_new(r->pool);
+
+
     // Create a digenst of the data
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting SHA256 hash");
     SHA256_CTX sha_ctx = { 0 };
@@ -289,3 +299,36 @@ static int VerifySignature(char data[], size_t dataLength, unsigned char signatu
 
     return 1;
 }
+
+
+
+
+
+static void sha256_init(apr_crypto_hash_t *h)
+    {
+    apr__SHA256_Init(h->data);
+    }
+
+static void sha256_add(apr_crypto_hash_t *h,const void *data,
+              apr_size_t bytes)
+    {
+    apr__SHA256_Update(h->data,data,bytes);
+    }
+
+static void sha256_finish(apr_crypto_hash_t *h,unsigned char *result)
+    {
+    apr__SHA256_Final(result,h->data);
+    }
+
+APR_DECLARE(apr_crypto_hash_t *) apr_crypto_sha256_new(apr_pool_t *p)
+    {
+    apr_crypto_hash_t *h=apr_palloc(p,sizeof *h);
+
+    h->data=apr_palloc(p,sizeof(SHA256_CTX));
+    h->init=sha256_init;
+    h->add=sha256_add;
+    h->finish=sha256_finish;
+    h->size=256/8;
+
+    return h;
+    }
