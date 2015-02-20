@@ -6,14 +6,16 @@
 #include <http_log.h>
 #include <string.h>
 #include <stdio.h>
-#include <openssl/sha.h>
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
+#include "apr.h"
 #include "apr_base64.h"
 #include "apr_strings.h"
 #include "apr_random.h"
 #include "apr_pools.h"
+#include "apr_tables.h"
+#include "util_script.h"
 
 struct Configuration
 {
@@ -46,7 +48,9 @@ static void populatePolicyParameters(char policyJson[], struct Policy *policy);
 static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type);
 static int strSearchPosition(char src[], char str[], int start);
 static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r);
-
+static void sha256_init(apr_crypto_hash_t *h);
+static void sha256_add(apr_crypto_hash_t *h,const void *data, apr_size_t bytes);
+static void sha256_finish(apr_crypto_hash_t *h,unsigned char *result);
 
 const char *privcon_set_publickey(cmd_parms *cmd, void *cfg, const char *arg)
 {
@@ -256,37 +260,14 @@ static int VerifySignature(char data[], size_t dataLength, unsigned char signatu
 
     // Create a digent of the data
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting apr SHA256 hash");
-    apr_crypto_hash_t *t = apr_crypto_sha256_new(r->pool);
+    apr_crypto_hash_t *h = apr_crypto_sha256_new(r->pool);
+    unsigned char digest2[SHA256_DIGEST_LENGTH];
+    sha256_init(h);
+    sha256_add(h, data, dataLength);
+    sha256_finish(h, digest2);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting apr digest %s", digest2);
 
-
-    // Create a digenst of the data
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting SHA256 hash");
-    SHA256_CTX sha_ctx = { 0 };
-    int rc;
-    unsigned char digest[SHA256_DIGEST_LENGTH];
-    rc = SHA256_Init(&sha_ctx);
-    if (1 != rc) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "SHA256_Init error");
-        return 0;
-    }
-
-    rc = SHA256_Update(&sha_ctx, data, dataLength);
-    if (1 != rc) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "SHA256_Update error");
-        return 0;
-    }
-
-    rc = SHA256_Final(digest, &sha_ctx);
-    if (1 != rc) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "SHA256_Final error");
-        return 0;
-    }
-
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "SHA256 Digest %s", digest);
-
-    int result = 0;
-
-    rc = RSA_verify(NID_sha256, digest, SHA256_DIGEST_LENGTH, signature, signatureLength, &rsa_pubkey);
+    int rc = RSA_verify(NID_sha256, digest2, SHA256_DIGEST_LENGTH, signature, signatureLength, &rsa_pubkey);
     if (1 != rc) {
         int rsa_error = ERR_get_error();
         char rsa_error_str[1024];
