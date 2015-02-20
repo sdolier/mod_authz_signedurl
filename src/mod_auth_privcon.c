@@ -45,7 +45,7 @@ static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
 static char* decodeUrlSafeString(const char *string, request_rec *r);
 static void populatePolicyParameters(char policyJson[], struct Policy *policy);
-static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type);
+static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type, request_rec *r);
 static int strSearchPosition(char src[], char str[], int start);
 static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r);
 static void sha256_init(apr_crypto_hash_t *h);
@@ -132,16 +132,16 @@ static int privcon_handler(request_rec *r)
     // Populate policy from policy json
     populatePolicyParameters(policyJson, &policy);
 
-    extractJsonPropertyValue(policyJson, "Resource", policy.url, JSONSTRING);
+    extractJsonPropertyValue(policyJson, "Resource", policy.url, JSONSTRING, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy url %s.", policy.url);
 
-    extractJsonPropertyValue(policyJson, "DateLessThan", policy.dateLessThan, JSONEPOCHDATETIME);
+    extractJsonPropertyValue(policyJson, "DateLessThan", policy.dateLessThan, JSONEPOCHDATETIME, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy DateLessThan %s.", policy.dateLessThan);
 
-    extractJsonPropertyValue(policyJson, "DateGreaterThan", policy.dateGreaterThan, JSONEPOCHDATETIME);
+    extractJsonPropertyValue(policyJson, "DateGreaterThan", policy.dateGreaterThan, JSONEPOCHDATETIME, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy DateGreaterThan %s.", policy.dateGreaterThan);
 
-    extractJsonPropertyValue(policyJson, "IpAddress", policy.sourceIp, JSONIPADDRESS);
+    extractJsonPropertyValue(policyJson, "IpAddress", policy.sourceIp, JSONIPADDRESS, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Source IP %s.", policy.sourceIp);
 
     // Let apache continue to process the request
@@ -157,7 +157,10 @@ static char* decodeUrlSafeString(const char *string, request_rec *r) {
     const char safe[] = {'-', '_', '~'};
     const char unsafe[] = {'+', '=', '/'};
 
-    char *decoded = malloc(strlen(string)+1);
+    //char *decoded = malloc(strlen(string)+1);
+    char *decoded;
+    decoded = apr_palloc(r->pool, strlen(string)+1);
+
     apr_cpystrn(decoded, string, strlen(string)+1);
  
     for (int x = 0; x < strlen(decoded); x++) {
@@ -171,7 +174,7 @@ static char* decodeUrlSafeString(const char *string, request_rec *r) {
     return decoded;
 }
 
-static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type) {
+static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type, request_rec *r) {
     // Create the pattern to match in the format of "propertyname":"
     char *propertyNamePattern;
     int propertyNamePosition;
@@ -179,21 +182,24 @@ static void extractJsonPropertyValue(char src[], char propertyName[], char prope
 
     switch (type) {
         case JSONSTRING:
-            propertyNamePattern = malloc(strlen(propertyName) + 4);
+            propertyNamePattern = apr_palloc(r->pool, strlen(propertyName)+4);
             sprintf(propertyNamePattern, "\"%s\":\"", propertyName);
             propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            propertyEndPattern = apr_palloc(r->pool, sizeof(char)*3);
             propertyEndPattern = "\"";
         break;
         case JSONEPOCHDATETIME:
-            propertyNamePattern = malloc(strlen(propertyName) + 23);
+            propertyNamePattern = apr_palloc(r->pool, strlen(propertyName)+23);
             sprintf(propertyNamePattern, "\"%s\":{\"Apache:EpochTime\":", propertyName);
             propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            propertyEndPattern = apr_palloc(r->pool, sizeof(char)*2);
             propertyEndPattern = "}";
         break;
         case JSONIPADDRESS:
-            propertyNamePattern = malloc(strlen(propertyName) + 23);
+            propertyNamePattern = apr_palloc(r->pool, strlen(propertyName)+23);
             sprintf(propertyNamePattern, "\"%s\":{\"Apache:SourceIp\":\"", propertyName);
             propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            propertyEndPattern = apr_palloc(r->pool, sizeof(char)*3);
             propertyEndPattern = "\"";
         break;
         case JSONINTEGER:
