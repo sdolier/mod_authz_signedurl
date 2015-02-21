@@ -27,10 +27,10 @@ static struct Configuration configuration;
 
 struct Policy
 {
-    char url[1024];
-    char sourceIp[15];
-    char dateLessThan[20];
-    char dateGreaterThan[20];
+    char *url;
+    char *sourceIp;
+    char *dateLessThan;
+    char *dateGreaterThan;
 };
 
 enum JsonDataType {
@@ -45,7 +45,7 @@ static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
 static char* decodeUrlSafeString(const char *string, request_rec *r);
 static void populatePolicyParameters(char policyJson[], struct Policy *policy);
-static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type, request_rec *r);
+static void extractJsonPropertyValue(char src[], char propertyName[], char **propertyValue, enum JsonDataType type, request_rec *r);
 static int strSearchPosition(char src[], char str[], int start);
 static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r);
 static void sha256_init(apr_crypto_hash_t *h);
@@ -130,18 +130,16 @@ static int privcon_handler(request_rec *r)
     }
 
     // Populate policy from policy json
-    populatePolicyParameters(policyJson, &policy);
-
-    extractJsonPropertyValue(policyJson, "Resource", policy.url, JSONSTRING, r);
+    extractJsonPropertyValue(policyJson, "Resource", &policy.url, JSONSTRING, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy url %s.", policy.url);
 
-    extractJsonPropertyValue(policyJson, "DateLessThan", policy.dateLessThan, JSONEPOCHDATETIME, r);
+    extractJsonPropertyValue(policyJson, "DateLessThan", &policy.dateLessThan, JSONEPOCHDATETIME, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy DateLessThan %s.", policy.dateLessThan);
 
-    extractJsonPropertyValue(policyJson, "DateGreaterThan", policy.dateGreaterThan, JSONEPOCHDATETIME, r);
+    extractJsonPropertyValue(policyJson, "DateGreaterThan", &policy.dateGreaterThan, JSONEPOCHDATETIME, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy DateGreaterThan %s.", policy.dateGreaterThan);
 
-    extractJsonPropertyValue(policyJson, "IpAddress", policy.sourceIp, JSONIPADDRESS, r);
+    extractJsonPropertyValue(policyJson, "IpAddress", &policy.sourceIp, JSONIPADDRESS, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Source IP %s.", policy.sourceIp);
 
     // Let apache continue to process the request
@@ -174,7 +172,7 @@ static char* decodeUrlSafeString(const char *string, request_rec *r) {
     return decoded;
 }
 
-static void extractJsonPropertyValue(char src[], char propertyName[], char propertyValue[], enum JsonDataType type, request_rec *r) {
+static void extractJsonPropertyValue(char src[], char propertyName[], char **propertyValue, enum JsonDataType type, request_rec *r) {
     // Create the pattern to match in the format of "propertyname":"
     char *propertyNamePattern;
     int propertyNamePosition;
@@ -213,10 +211,9 @@ static void extractJsonPropertyValue(char src[], char propertyName[], char prope
     int valueLength = valueEndPosition - valueStartPosition;
 
     // Copy the property value
-    memcpy(propertyValue, &src[valueStartPosition], valueLength);
-
-    // Add trailing null after the last chatacter
-    propertyValue[valueLength] = '\0'; 
+    // Allocate 1 extera char set to \0
+    *propertyValue = apr_pcalloc(r->pool, valueLength+1);
+    memcpy(*propertyValue, &src[valueStartPosition], valueLength);
 }
 
 static int strSearchPosition(char src[], char str[], int start) {
