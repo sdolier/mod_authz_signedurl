@@ -44,7 +44,6 @@ enum JsonDataType {
 static void register_hooks(apr_pool_t *pool);
 static int privcon_handler(request_rec *r);
 static char* decodeUrlSafeString(const char *string, request_rec *r);
-static void populatePolicyParameters(char policyJson[], struct Policy *policy);
 static void extractJsonPropertyValue(char src[], char propertyName[], char **propertyValue, enum JsonDataType type, request_rec *r);
 static int strSearchPosition(char src[], char str[], int start);
 static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r);
@@ -146,11 +145,6 @@ static int privcon_handler(request_rec *r)
     return DECLINED;
 }
 
-static void populatePolicyParameters(char policyJson[], struct Policy *policy) {
-    strcpy(policy->url, "http://www.google.com");
-
-}
-
 static char* decodeUrlSafeString(const char *string, request_rec *r) {
     const char safe[] = {'-', '_', '~'};
     const char unsafe[] = {'+', '=', '/'};
@@ -174,29 +168,28 @@ static char* decodeUrlSafeString(const char *string, request_rec *r) {
 
 static void extractJsonPropertyValue(char src[], char propertyName[], char **propertyValue, enum JsonDataType type, request_rec *r) {
     // Create the pattern to match in the format of "propertyname":"
-    char *propertyNamePattern;
-    int propertyNamePosition;
-    char *propertyEndPattern;
+    char *propertyNamePattern, *propertyEndPattern;
+    int *propertyNamePosition = apr_palloc(r->pool, sizeof(int));
 
     switch (type) {
         case JSONSTRING:
             propertyNamePattern = apr_palloc(r->pool, strlen(propertyName)+4);
             sprintf(propertyNamePattern, "\"%s\":\"", propertyName);
-            propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            *propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
             propertyEndPattern = apr_palloc(r->pool, sizeof(char)*3);
             propertyEndPattern = "\"";
         break;
         case JSONEPOCHDATETIME:
             propertyNamePattern = apr_palloc(r->pool, strlen(propertyName)+23);
             sprintf(propertyNamePattern, "\"%s\":{\"Apache:EpochTime\":", propertyName);
-            propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            *propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
             propertyEndPattern = apr_palloc(r->pool, sizeof(char)*2);
             propertyEndPattern = "}";
         break;
         case JSONIPADDRESS:
             propertyNamePattern = apr_palloc(r->pool, strlen(propertyName)+23);
             sprintf(propertyNamePattern, "\"%s\":{\"Apache:SourceIp\":\"", propertyName);
-            propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
+            *propertyNamePosition = strSearchPosition(src, propertyNamePattern, 0);
             propertyEndPattern = apr_palloc(r->pool, sizeof(char)*3);
             propertyEndPattern = "\"";
         break;
@@ -206,14 +199,17 @@ static void extractJsonPropertyValue(char src[], char propertyName[], char **pro
     }
    
     // Get the value start position , end position , and length
-    int valueStartPosition = propertyNamePosition + strlen(propertyNamePattern);
-    int valueEndPosition = strSearchPosition(src, propertyEndPattern, valueStartPosition);
-    int valueLength = valueEndPosition - valueStartPosition;
+    int *valueStartPosition = apr_palloc(r->pool, sizeof(int));
+    *valueStartPosition = *propertyNamePosition + strlen(propertyNamePattern);
+    int *valueEndPosition = apr_palloc(r->pool, sizeof(int));
+    *valueEndPosition = strSearchPosition(src, propertyEndPattern, *valueStartPosition);
+    int *valueLength = apr_palloc(r->pool, sizeof(int));
+    *valueLength = *valueEndPosition - *valueStartPosition;
 
     // Copy the property value
     // Allocate 1 extera char set to \0
-    *propertyValue = apr_pcalloc(r->pool, valueLength+1);
-    memcpy(*propertyValue, &src[valueStartPosition], valueLength);
+    *propertyValue = apr_pcalloc(r->pool, *valueLength+1);
+    memcpy(*propertyValue, &src[*valueStartPosition], *valueLength);
 }
 
 static int strSearchPosition(char src[], char str[], int start) {
@@ -284,28 +280,23 @@ static int VerifySignature(char data[], size_t dataLength, unsigned char signatu
     return 1;
 }
 
-
-
-
-
 static void sha256_init(apr_crypto_hash_t *h)
-    {
+{
     apr__SHA256_Init(h->data);
-    }
+}
 
-static void sha256_add(apr_crypto_hash_t *h,const void *data,
-              apr_size_t bytes)
-    {
+static void sha256_add(apr_crypto_hash_t *h,const void *data, apr_size_t bytes)
+{
     apr__SHA256_Update(h->data,data,bytes);
-    }
+}
 
 static void sha256_finish(apr_crypto_hash_t *h,unsigned char *result)
-    {
+{
     apr__SHA256_Final(result,h->data);
-    }
+}
 
 APR_DECLARE(apr_crypto_hash_t *) apr_crypto_sha256_new(apr_pool_t *p)
-    {
+{
     apr_crypto_hash_t *h=apr_palloc(p,sizeof *h);
 
     h->data=apr_palloc(p,sizeof(SHA256_CTX));
@@ -315,4 +306,4 @@ APR_DECLARE(apr_crypto_hash_t *) apr_crypto_sha256_new(apr_pool_t *p)
     h->size=256/8;
 
     return h;
-    }
+}
