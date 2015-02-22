@@ -16,6 +16,7 @@
 #include "apr_pools.h"
 #include "apr_tables.h"
 #include "util_script.h"
+#include <time.h>
 
 struct Configuration
 {
@@ -140,6 +141,28 @@ static int privcon_handler(request_rec *r)
 
     extractJsonPropertyValue(policyJson, "IpAddress", &policy.sourceIp, JSONIPADDRESS, r);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy Source IP %s.", policy.sourceIp);
+
+    // Check date time policy requirment
+    time_t *sec = apr_palloc(r->pool, sizeof(time_t));
+    *sec = time(NULL);
+
+    // Check the request is before the less then policy requirement
+    long int *policy_datelessthan = apr_palloc(r->pool, sizeof(long int));
+    sscanf(policy.dateLessThan, "%ld", policy_datelessthan);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "checking less than policy %ld < %ld.", *sec, *policy_datelessthan);
+
+    if (*sec > *policy_datelessthan) {
+        return HTTP_FORBIDDEN;
+    }
+
+    // Check the request is after the greater than policy requirment
+    long int *policy_dategreaterthan = apr_palloc(r->pool, sizeof(long int));
+    sscanf(policy.dateGreaterThan, "%ld", policy_dategreaterthan);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "checking greater than policy %ld < %ld.", *sec, *policy_dategreaterthan);
+
+    if (*sec < *policy_dategreaterthan) {
+        return HTTP_FORBIDDEN;
+    }
 
     // Let apache continue to process the request
     return DECLINED;
