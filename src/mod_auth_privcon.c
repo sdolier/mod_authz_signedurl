@@ -126,6 +126,7 @@ static int privcon_handler(request_rec *r)
     // Verify the signature matches the json data
     int signatureOk = VerifySignature(policyJson, policyJsonLength, policySignature, signatureLength, r);
     if (1 != signatureOk) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Request signature does not match policy document %s.", policySignature);
         return HTTP_FORBIDDEN;
     }
 
@@ -152,6 +153,7 @@ static int privcon_handler(request_rec *r)
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "checking less than policy %ld < %ld.", *sec, *policy_datelessthan);
 
     if (*sec > *policy_datelessthan) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Request does not fulfill datetime less than policy %ld != %ld.", *sec, *policy_datelessthan);
         return HTTP_FORBIDDEN;
     }
 
@@ -161,7 +163,14 @@ static int privcon_handler(request_rec *r)
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "checking greater than policy %ld < %ld.", *sec, *policy_dategreaterthan);
 
     if (*sec < *policy_dategreaterthan) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Request does not fulfill datetime greater than policy %ld != %ld.", *sec, *policy_dategreaterthan);
         return HTTP_FORBIDDEN;
+    }
+
+    // Check ip address matched policy requirement
+    if (strcmp(r->useragent_ip, policy.sourceIp)!=0) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Source IP address does not match policy %s != %s.", r->useragent_ip, policy.sourceIp);
+        return HTTP_FORBIDDEN;   
     }
 
     // Let apache continue to process the request
