@@ -43,7 +43,7 @@ enum JsonDataType {
 
 /* Define prototypes of our functions in this module */
 static void register_hooks(apr_pool_t *pool);
-static int privcon_handler(request_rec *r);
+static int signedurl_handler(request_rec *r);
 static char* decodeUrlSafeString(const char *string, request_rec *r);
 static void extractJsonPropertyValue(char src[], char propertyName[], char **propertyValue, enum JsonDataType type, request_rec *r);
 static int strSearchPosition(char src[], char str[], int start);
@@ -52,34 +52,34 @@ static void sha256_init(apr_crypto_hash_t *h);
 static void sha256_add(apr_crypto_hash_t *h,const void *data, apr_size_t bytes);
 static void sha256_finish(apr_crypto_hash_t *h,unsigned char *result);
 
-const char *privcon_set_publickey(cmd_parms *cmd, void *cfg, const char *arg)
+const char *signedurl_set_publickey(cmd_parms *cmd, void *cfg, const char *arg)
 {
     configuration.publicKey = arg;
     return NULL;
 }
 
-const char *privcon_set_publickeypath(cmd_parms *cmd, void *cfg, const char *arg)
+const char *signedurl_set_publickeypath(cmd_parms *cmd, void *cfg, const char *arg)
 {
     configuration.publicKeyPath = arg;
     return NULL;
 }
 
-static const command_rec privcon_directives[] =
+static const command_rec signedurl_directives[] =
 {
-    AP_INIT_TAKE1("privConPublicKey", privcon_set_publickey, NULL, OR_ALL, "Set the public key"),
-    AP_INIT_TAKE1("privConPublicKeyPath", privcon_set_publickeypath, NULL, OR_ALL, "Set the path to a public key"),
+    AP_INIT_TAKE1("signedUrlPublicKey", signedurl_set_publickey, NULL, OR_ALL, "Set the public key"),
+    AP_INIT_TAKE1("signedUrlPublicKeyPath", signedurl_set_publickeypath, NULL, OR_ALL, "Set the path to a public key"),
     { NULL }
 };
 
 /* Define our module as an entity and assign a function for registering hooks  */
-module AP_MODULE_DECLARE_DATA   mod_auth_privcon_module =
+module AP_MODULE_DECLARE_DATA   mod_authz_signedurl_module =
 {
     STANDARD20_MODULE_STUFF,
     NULL,               // Per-directory configuration handler
     NULL,               // Merge handler for per-directory configurations
     NULL,               // Per-server configuration handler
     NULL,               // Merge handler for per-server configurations
-    privcon_directives, // Any directives we may have for httpd
+    signedurl_directives, // Any directives we may have for httpd
     register_hooks      // Our hook registering function
 };
 
@@ -88,20 +88,20 @@ static void register_hooks(apr_pool_t *pool)
 {
     
     /* Hook the request handler */
-    ap_hook_handler(privcon_handler, NULL, NULL, APR_HOOK_LAST);
+    ap_hook_handler(signedurl_handler, NULL, NULL, APR_HOOK_LAST);
 }
 
 /* The handler function for our module.
  * This is where all the fun happens!
  */
 
-static int privcon_handler(request_rec *r)
+static int signedurl_handler(request_rec *r)
 {
     /* First off, we need to check if this is a call for the "example" handler.
      * If it is, we accept it and do our things, it not, we simply return DECLINED,
      * and Apache will try somewhere else.
      */
-    if (!r->handler || strcmp(r->handler, "privcon-handler")) return (DECLINED);
+    if (!r->handler || strcmp(r->handler, "signedurl-handler")) return (DECLINED);
 
     struct Policy policy;
 
