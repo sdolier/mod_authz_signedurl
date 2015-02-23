@@ -66,8 +66,8 @@ To enable the module configure a handler in an apache configuration file or a .h
 For one or more file types:
 ```
 <IfModule mod_authz_signedurl_module>
- AddHandler signedurl-handler .jpg
- AddHandler signedurl-handler .png
+  AddHandler signedurl-handler .jpg
+  AddHandler signedurl-handler .png
 </IfModule>
 ```
 
@@ -81,4 +81,5 @@ Or for all requests in a directory
 ### Module Directives
 Set the public key to verify the cryptographic signature
 ```
-SignedUrlPublicKey "<base 64 encoded public key>"```
+SignedUrlPublicKey "<base 64 encoded public key>"
+```
