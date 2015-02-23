@@ -77,3 +77,9 @@ For one or more file types:
       SetHandler signedurl-handler
   </IfModule>
  ```
+ 
+ ### Module Directives
+ Set the public key to verify the cryptographic signature
+ ```
+ SignedUrlPublicKey "<base 64 encoded public key>"
+ ```
