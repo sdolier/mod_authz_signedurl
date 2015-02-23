@@ -173,6 +173,27 @@ static int signedurl_handler(request_rec *r)
         return HTTP_FORBIDDEN;   
     }
 
+    // Check url matches policy
+    apr_uri_t *uptr = apr_palloc(r->pool, sizeof(apr_uri_t));
+    apr_uri_parse(r->pool, policy.url, uptr);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Comparing requested url to policy url.");
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy url %s://%s:%d%s.", uptr->scheme, uptr->hostname, uptr->port, uptr->path);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested url %s://%s:%d%s.", r->parsed_uri.scheme, r->parsed_uri.hostname, r->parsed_uri.port, r->parsed_uri.path);
+
+    // Check protocol (http/https..)
+    if (uptr->scheme!=NULL) {
+        if (r->parsed_uri.scheme == NULL || strcmp(uptr->scheme, r->parsed_uri.scheme) != 0) {
+            ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested protocol %s does not match policy protocol %s.", r->parsed_uri.scheme, uptr->scheme);
+            return HTTP_FORBIDDEN;           
+        }
+    }
+
+    // Check hostname
+    if (strcmp(uptr->hostname, r->parsed_uri.hostname) != 0) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested hostname %s does not match policy hostname %s.", r->parsed_uri.hostname, uptr->hostname);
+        return HTTP_FORBIDDEN; 
+    }
+
     // Let apache continue to process the request
     return DECLINED;
 }
