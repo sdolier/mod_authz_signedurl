@@ -54,3 +54,26 @@ Replace these invalid characters | With these characters
 +                                | - (hyphen)
 =                                | _ (underscore)
 /                                | ~ (tilde)
+
+## Apache Configuration
+Enable the module in you httpd configuration.
+```
+LoadModule mod_authz_signedurl_module modules/mod_authz_signedurl.so
+```
+
+To enable the module configure a handler in an apache configuration file or a .htaccess file. 
+
+For one or more file types:
+ ```
+ <IfModule mod_authz_signedurl_module>
+     AddHandler signedurl-handler .jpg
+     AddHandler signedurl-handler .png
+ </IfModule>
+ ```
+ 
+ Or for all requests in a directory
+ ```
+  <IfModule mod_authz_signedurl_module>
+      SetHandler signedurl-handler
+  </IfModule>
+ ```
