@@ -64,22 +64,21 @@ LoadModule mod_authz_signedurl_module modules/mod_authz_signedurl.so
 To enable the module configure a handler in an apache configuration file or a .htaccess file. 
 
 For one or more file types:
- ```
- <IfModule mod_authz_signedurl_module>
-     AddHandler signedurl-handler .jpg
-     AddHandler signedurl-handler .png
- </IfModule>
- ```
+```
+<IfModule mod_authz_signedurl_module>
+ AddHandler signedurl-handler .jpg
+ AddHandler signedurl-handler .png
+</IfModule>
+```
+
+Or for all requests in a directory
+```
+<IfModule mod_authz_signedurl_module>
+  SetHandler signedurl-handler
+</IfModule>
+```
  
- Or for all requests in a directory
- ```
-  <IfModule mod_authz_signedurl_module>
-      SetHandler signedurl-handler
-  </IfModule>
- ```
- 
- ### Module Directives
- Set the public key to verify the cryptographic signature
- ```
- SignedUrlPublicKey "<base 64 encoded public key>"
- ```
+### Module Directives
+Set the public key to verify the cryptographic signature
+```
+SignedUrlPublicKey "<base 64 encoded public key>"```
