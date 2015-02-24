@@ -178,7 +178,7 @@ static int signedurl_handler(request_rec *r)
     apr_uri_parse(r->pool, policy.url, uptr);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Comparing requested url to policy url.");
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy url %s://%s:%d%s.", uptr->scheme, uptr->hostname, uptr->port, uptr->path);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested url %s://%s:%d%s.", r->parsed_uri.scheme, r->parsed_uri.hostname, r->parsed_uri.port, r->parsed_uri.path);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested url %s://%s:%d%s.", r->parsed_uri.scheme, r->hostname, r->parsed_uri.port, r->parsed_uri.path);
 
     // Check protocol (http/https..)
     if (uptr->scheme!=NULL) {
@@ -188,9 +188,21 @@ static int signedurl_handler(request_rec *r)
         }
     }
 
+    // Check port
+    if (uptr->port != r->parsed_uri.port) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested port %d does not match policy port %d.", r->parsed_uri.port, uptr->port);
+        return HTTP_FORBIDDEN; 
+    }
+
     // Check hostname
-    if (strcmp(uptr->hostname, r->parsed_uri.hostname) != 0) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested hostname %s does not match policy hostname %s.", r->parsed_uri.hostname, uptr->hostname);
+    if (uptr->hostname == NULL || r->hostname == NULL || strcmp(uptr->hostname, r->hostname) != 0) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested hostname %s does not match policy hostname %s.", r->hostname, uptr->hostname);
+        return HTTP_FORBIDDEN; 
+    }
+
+    // Check path
+    if (uptr->path == NULL || r->parsed_uri.path == NULL || strcmp(uptr->path, r->parsed_uri.path) != 0) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested path %s does not match policy path %s.", r->parsed_uri.path, uptr->path);
         return HTTP_FORBIDDEN; 
     }
 
