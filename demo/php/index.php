@@ -4,7 +4,7 @@ date_default_timezone_set('UTC');
 
 $policyJson = "{"
    ."\"Statement\": [{"
-      ."\"Resource\":\"//localhost:8099/mod_authz_signedurl/private/success.jpg\","
+      ."\"Resource\":\"http://localhost:8099/mod_authz_signedurl/private/success.jpg\","
       ."\"Condition\":{"
          ."\"DateLessThan\":{\"Apache:EpochTime\":" . (time()+(10*60)) . "},"
          ."\"DateGreaterThan\":{\"Apache:EpochTime\":" . (time()-(1*60)) . "},"

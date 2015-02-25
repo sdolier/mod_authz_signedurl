@@ -178,11 +178,11 @@ static int signedurl_handler(request_rec *r)
     apr_uri_parse(r->pool, policy.url, uptr);
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Comparing requested url to policy url.");
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "policy url %s://%s:%d%s.", uptr->scheme, uptr->hostname, uptr->port, uptr->path);
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested url %s://%s:%d%s.", r->parsed_uri.scheme, r->hostname, r->parsed_uri.port, r->parsed_uri.path);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested url %s://%s:%d%s.", ap_http_scheme(r), r->hostname, r->parsed_uri.port, r->parsed_uri.path);
 
     // Check protocol (http/https..)
     if (uptr->scheme!=NULL) {
-        if (r->parsed_uri.scheme == NULL || strcmp(uptr->scheme, r->parsed_uri.scheme) != 0) {
+        if (ap_http_scheme(r) == NULL || strcmp(uptr->scheme, ap_http_scheme(r)) != 0) {
             ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "requested protocol %s does not match policy protocol %s.", r->parsed_uri.scheme, uptr->scheme);
             return HTTP_FORBIDDEN;           
         }
