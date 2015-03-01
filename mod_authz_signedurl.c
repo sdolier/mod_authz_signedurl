@@ -111,8 +111,9 @@ static int signedurl_handler(request_rec *r)
     const char *base64Policy = decodeUrlSafeString(apr_table_get(GET, "policy"), r);
     const char *base64Signature = decodeUrlSafeString(apr_table_get(GET, "signature"), r);
 
-    // Check required querystring orameters are present
+    // Check required querystring parameters are present
     if (!base64Policy || !base64Signature) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Required querystring parameters missing. Url must contain policy and signature");
         return HTTP_FORBIDDEN;
     }
 
@@ -213,6 +214,10 @@ static int signedurl_handler(request_rec *r)
 static char* decodeUrlSafeString(const char *string, request_rec *r) {
     const char safe[] = {'-', '_', '~'};
     const char unsafe[] = {'+', '=', '/'};
+
+    if (string==NULL) {
+        return NULL;
+    }
 
     //char *decoded = malloc(strlen(string)+1);
     char *decoded;
