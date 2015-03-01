@@ -18,13 +18,12 @@
 #include "util_script.h"
 #include <time.h>
 
-struct Configuration
+typeof struct
 {
+    const int enabled;
     const char *publicKey;
     const char *publicKeyPath;
-};
-
-static struct Configuration configuration;
+} signedurl_config;
 
 struct Policy
 {
@@ -42,6 +41,8 @@ enum JsonDataType {
 };
 
 /* Define prototypes of our functions in this module */
+void        *create_dir_conf(apr_pool_t *pool, char *context);
+void        *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD);
 static void register_hooks(apr_pool_t *pool);
 static int signedurl_handler(request_rec *r);
 static char* decodeUrlSafeString(const char *string, request_rec *r);
@@ -54,13 +55,40 @@ static void sha256_finish(apr_crypto_hash_t *h,unsigned char *result);
 
 const char *signedurl_set_publickey(cmd_parms *cmd, void *cfg, const char *arg)
 {
-    configuration.publicKey = arg;
+    signedurl_config    *conf = (signedurl_config *) cfg;
+
+    if(conf)
+    {
+        strcpy(conf->publicKey, arg);
+    }
+
     return NULL;
 }
 
 const char *signedurl_set_publickeypath(cmd_parms *cmd, void *cfg, const char *arg)
 {
-    configuration.publicKeyPath = arg;
+    signedurl_config    *conf = (signedurl_config *) cfg;
+
+    if(conf)
+    {
+        strcpy(conf->publicKeyPath, arg);
+    }
+
+    return NULL;
+}
+
+const char *signedurl_set_enabled(cmd_parms *cmd, void *cfg, const char *arg)
+{
+    signedurl_config    *conf = (signedurl_config *) cfg;
+
+    if(conf)
+    {
+        if(!strcasecmp(arg, "on"))
+            conf->enabled = 1;
+        else
+            conf->enabled = 0;
+    }
+
     return NULL;
 }
 
@@ -68,19 +96,57 @@ static const command_rec signedurl_directives[] =
 {
     AP_INIT_TAKE1("signedUrlPublicKey", signedurl_set_publickey, NULL, OR_ALL, "Set the public key"),
     AP_INIT_TAKE1("signedUrlPublicKeyPath", signedurl_set_publickeypath, NULL, OR_ALL, "Set the path to a public key"),
+    AP_INIT_TAKE1("signedUrlEnabled", signedurl_set_enabled, NULL, OR_ALL, "enable the module"),
     { NULL }
 };
+
+
+void *create_dir_conf(apr_pool_t *pool, char *context)
+{
+    context = context ? context : "Newly created configuration";
+
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    signedurl_config    *cfg = apr_pcalloc(pool, sizeof(signedurl_config));
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    if(cfg)
+    {
+        {
+            /* Set some default values */
+            strcpy(cfg->context, context);
+            cfg->enabled = 0;
+        }
+    }
+
+    return cfg;
+}
+
+void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD)
+{
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+    signedurl_config    *base = (signedurl_config *) BASE;
+    signedurl_config    *add = (signedurl_config *) ADD;
+    signedurl_config    *conf = (signedurl_config *) create_dir_conf(pool, "Merged configuration");
+    /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+    conf->enabled = (add->enabled == 0) ? base->enabled : add->enabled;
+    conf->typeOfAction = add->typeOfAction ? add->typeOfAction : base->typeOfAction;
+    strcpy(conf->path, strlen(add->path) ? add->path : base->path);
+    return conf;
+}
+
+
 
 /* Define our module as an entity and assign a function for registering hooks  */
 module AP_MODULE_DECLARE_DATA   mod_authz_signedurl_module =
 {
     STANDARD20_MODULE_STUFF,
-    NULL,               // Per-directory configuration handler
-    NULL,               // Merge handler for per-directory configurations
-    NULL,               // Per-server configuration handler
-    NULL,               // Merge handler for per-server configurations
-    signedurl_directives, // Any directives we may have for httpd
-    register_hooks      // Our hook registering function
+    create_dir_conf,            // Per-directory configuration handler
+    merge_dir_conf,             // Merge handler for per-directory configurations
+    NULL,                       // Per-server configuration handler
+    NULL,                       // Merge handler for per-server configurations
+    signedurl_directives,       // Any directives we may have for httpd
+    register_hooks              // Our hook registering function
 };
 
 /* register_hooks: Adds a hook to the httpd process */
