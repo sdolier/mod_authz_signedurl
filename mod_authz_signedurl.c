@@ -18,11 +18,12 @@
 #include "util_script.h"
 #include <time.h>
 
-typeof struct
+typedef struct
 {
-    const int enabled;
-    const char *publicKey;
-    const char *publicKeyPath;
+    char    context[256];
+    int enabled;
+    char publicKey[1024];
+    char publicKeyPath[1024];
 } signedurl_config;
 
 struct Policy
@@ -48,7 +49,7 @@ static int signedurl_handler(request_rec *r);
 static char* decodeUrlSafeString(const char *string, request_rec *r);
 static void extractJsonPropertyValue(char src[], char propertyName[], char **propertyValue, enum JsonDataType type, request_rec *r);
 static int strSearchPosition(char src[], char str[], int start);
-static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r);
+static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r, signedurl_config *config);
 static void sha256_init(apr_crypto_hash_t *h);
 static void sha256_add(apr_crypto_hash_t *h,const void *data, apr_size_t bytes);
 static void sha256_finish(apr_crypto_hash_t *h,unsigned char *result);
@@ -114,6 +115,8 @@ void *create_dir_conf(apr_pool_t *pool, char *context)
         {
             /* Set some default values */
             strcpy(cfg->context, context);
+            memset(cfg->publicKey, 0, 1024);
+            memset(cfg->publicKeyPath, 0, 1024);
             cfg->enabled = 0;
         }
     }
@@ -130,8 +133,8 @@ void *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD)
     /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
     conf->enabled = (add->enabled == 0) ? base->enabled : add->enabled;
-    conf->typeOfAction = add->typeOfAction ? add->typeOfAction : base->typeOfAction;
-    strcpy(conf->path, strlen(add->path) ? add->path : base->path);
+    strcpy(conf->publicKey, strlen(add->publicKey) ? add->publicKey : base->publicKey);
+    strcpy(conf->publicKeyPath, strlen(add->publicKeyPath) ? add->publicKeyPath : base->publicKeyPath);
     return conf;
 }
 
@@ -169,6 +172,13 @@ static int signedurl_handler(request_rec *r)
      */
     if (!r->handler || strcmp(r->handler, "signedurl-handler")) return (DECLINED);
 
+    signedurl_config    *config = (signedurl_config *) ap_get_module_config(r->per_dir_config, &mod_authz_signedurl_module);
+
+    if (config->enabled!=1) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Signed Url module not enabled, (%d)", config->enabled);
+        return DECLINED;
+    }
+
     struct Policy policy;
 
     // Get the querystring parameters
@@ -191,7 +201,7 @@ static int signedurl_handler(request_rec *r)
     size_t signatureLength = apr_base64_decode_binary(policySignature, base64Signature);
 
     // Verify the signature matches the json data
-    int signatureOk = VerifySignature(policyJson, policyJsonLength, policySignature, signatureLength, r);
+    int signatureOk = VerifySignature(policyJson, policyJsonLength, policySignature, signatureLength, r, config);
     if (1 != signatureOk) {
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Request signature does not match policy document %s.", policySignature);
         return HTTP_FORBIDDEN;
@@ -379,7 +389,7 @@ static int strSearchPosition(char src[], char str[], int start) {
    return (-1);
 }
 
-static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r) {
+static int VerifySignature(char data[], size_t dataLength, unsigned char signature[], size_t signatureLength, request_rec *r, signedurl_config *config) {
     
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Starting signature verification");
 
@@ -387,8 +397,8 @@ static int VerifySignature(char data[], size_t dataLength, unsigned char signatu
     //FILE *keyfile = fopen(configuration.publicKeyPath, "r");
     //RSA rsa_pubkey = *PEM_read_RSA_PUBKEY(keyfile, NULL, NULL, NULL);
 
-    char publicKey[apr_base64_decode_len(configuration.publicKey)];
-    size_t publicKeyLength = apr_base64_decode(publicKey, configuration.publicKey);
+    char publicKey[apr_base64_decode_len(config->publicKey)];
+    size_t publicKeyLength = apr_base64_decode(publicKey, config->publicKey);
     BIO* bio = BIO_new_mem_buf( publicKey, publicKeyLength);
     RSA rsa_pubkey = *PEM_read_bio_RSA_PUBKEY(bio, NULL, NULL, NULL);
 
