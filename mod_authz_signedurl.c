@@ -45,7 +45,7 @@ enum JsonDataType {
 void        *create_dir_conf(apr_pool_t *pool, char *context);
 void        *merge_dir_conf(apr_pool_t *pool, void *BASE, void *ADD);
 static void register_hooks(apr_pool_t *pool);
-static int signedurl_handler(request_rec *r);
+static int signedurl_check_policy(request_rec *r);
 static char* decodeUrlSafeString(const char *string, request_rec *r);
 static void extractJsonPropertyValue(char src[], char propertyName[], char **propertyValue, enum JsonDataType type, request_rec *r);
 static int strSearchPosition(char src[], char str[], int start);
@@ -156,21 +156,21 @@ module AP_MODULE_DECLARE_DATA   mod_authz_signedurl_module =
 static void register_hooks(apr_pool_t *pool) 
 {
     
-    /* Hook the request handler */
-    ap_hook_handler(signedurl_handler, NULL, NULL, APR_HOOK_LAST);
+    /* Hook the request */
+    ap_hook_access_checker(signedurl_check_policy, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 /* The handler function for our module.
  * This is where all the fun happens!
  */
 
-static int signedurl_handler(request_rec *r)
+static int signedurl_check_policy(request_rec *r)
 {
     /* First off, we need to check if this is a call for the "example" handler.
      * If it is, we accept it and do our things, it not, we simply return DECLINED,
      * and Apache will try somewhere else.
      */
-    if (!r->handler || strcmp(r->handler, "signedurl-handler")) return (DECLINED);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "Signed Url module");
 
     signedurl_config    *config = (signedurl_config *) ap_get_module_config(r->per_dir_config, &mod_authz_signedurl_module);
 
